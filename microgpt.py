@@ -94,6 +94,9 @@ for i in range(n_layer):
     state_dict[f'layer{i}.attn_wo'] = matrix(n_embd, n_embd)
     state_dict[f'layer{i}.mlp_fc1'] = matrix(4 * n_embd, n_embd)
     state_dict[f'layer{i}.mlp_fc2'] = matrix(n_embd, 4 * n_embd)
+    rank = 4
+    state_dict[f'layer{i}.lora_A'] = matrix(rank, n_embd)
+    state_dict[f'layer{i}.lora_B'] = matrix(n_embd, rank)
 params = [p for mat in state_dict.values() for row in mat for p in row] # flatten params into a single list[Value]
 print(f"num params: {len(params)}")
 
@@ -132,7 +135,9 @@ def gpt(token_id, pos_id, keys, values):
         # 1) Multi-head Attention block
         x_residual = x
         x = rmsnorm(x)
-        q = linear(x, state_dict[f'layer{li}.attn_wq'])
+        base_q = linear(x, state_dict[f'layer{li}.attn_wq'])
+        lora_q = linear(linear(x, state_dict[f'layer{li}.lora_A']), state_dict[f'layer{li}.lora_B'])
+        q = [b + l for b, l in zip(base_q, lora_q)]
         k = linear(x, state_dict[f'layer{li}.attn_wk'])
         v = linear(x, state_dict[f'layer{li}.attn_wv'])
         keys[li].append(k)

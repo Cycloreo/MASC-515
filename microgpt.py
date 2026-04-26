@@ -115,8 +115,17 @@ def rmsnorm(x):
 
 def gpt(token_id, pos_id, keys, values):
     tok_emb = state_dict['wte'][token_id] # token embedding
-    pos_emb = state_dict['wpe'][pos_id] # position embedding
-    x = [t + p for t, p in zip(tok_emb, pos_emb)] # joint token and position embedding
+    def apply_rope(x, pos):
+    out = []
+    for i in range(0, len(x), 2):
+        theta = pos / (10000 ** (i / len(x)))
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        out.append(x[i] * cos_t - x[i+1] * sin_t)
+        out.append(x[i] * sin_t + x[i+1] * cos_t)
+    return out
+
+    x = apply_rope(tok_emb, pos_id)
     x = rmsnorm(x) # note: not redundant due to backward pass via the residual connection
 
     for li in range(n_layer):

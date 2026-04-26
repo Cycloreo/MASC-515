@@ -92,8 +92,11 @@ for i in range(n_layer):
     state_dict[f'layer{i}.attn_wk'] = matrix(n_embd, n_embd)
     state_dict[f'layer{i}.attn_wv'] = matrix(n_embd, n_embd)
     state_dict[f'layer{i}.attn_wo'] = matrix(n_embd, n_embd)
-    state_dict[f'layer{i}.mlp_fc1'] = matrix(4 * n_embd, n_embd)
-    state_dict[f'layer{i}.mlp_fc2'] = matrix(n_embd, 4 * n_embd)
+    num_experts = 2
+    for e in range(num_experts):
+        state_dict[f'layer{i}.expert{e}_fc1'] = matrix(4 * n_embd, n_embd)
+        state_dict[f'layer{i}.expert{e}_fc2'] = matrix(n_embd, 4 * n_embd)
+    state_dict[f'layer{i}.gate'] = matrix(num_experts, n_embd)
     rank = 4
     state_dict[f'layer{i}.lora_A'] = matrix(rank, n_embd)
     state_dict[f'layer{i}.lora_B'] = matrix(n_embd, rank)
@@ -154,12 +157,28 @@ def gpt(token_id, pos_id, keys, values):
             x_attn.extend(head_out)
         x = linear(x_attn, state_dict[f'layer{li}.attn_wo'])
         x = [a + b for a, b in zip(x, x_residual)]
-        # 2) MLP block
+
         x_residual = x
         x = rmsnorm(x)
-        x = linear(x, state_dict[f'layer{li}.mlp_fc1'])
-        x = [xi.gelu() for xi in x]
-        x = linear(x, state_dict[f'layer{li}.mlp_fc2'])
+
+        # gating
+        gate_logits = linear(x, state_dict[f'layer{li}.gate'])
+        gate_probs = softmax(gate_logits)
+
+        expert_outputs = []
+
+        for e in range(num_experts):
+            h = linear(x, state_dict[f'layer{li}.expert{e}_fc1'])
+            h = [xi.gelu() for xi in h]
+            h = linear(h, state_dict[f'layer{li}.expert{e}_fc2'])
+            expert_outputs.append(h)
+
+        # combine experts
+        x = []
+        for j in range(len(expert_outputs[0])):
+            val = sum(gate_probs[e] * expert_outputs[e][j] for e in range(num_experts))
+            x.append(val)
+
         x = [a + b for a, b in zip(x, x_residual)]
 
     logits = linear(x, state_dict['lm_head'])

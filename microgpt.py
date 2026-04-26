@@ -71,6 +71,14 @@ class Value:
             for child, local_grad in zip(v._children, v._local_grads):
                 child.grad += local_grad * v.grad
 
+    def gelu(self):
+    return 0.5 * self * (1 + (self * 0.7978845608 * (1 + 0.044715 * self * self)).tanh())
+    
+    def tanh(self):
+    e_pos = self.exp()
+    e_neg = (-self).exp()
+    return (e_pos - e_neg) / (e_pos + e_neg)
+
 # Initialize the parameters, to store the knowledge of the model
 n_layer = 1     # depth of the transformer neural network (number of layers)
 n_embd = 16     # width of the network (embedding dimension)
@@ -136,7 +144,7 @@ def gpt(token_id, pos_id, keys, values):
         x_residual = x
         x = rmsnorm(x)
         x = linear(x, state_dict[f'layer{li}.mlp_fc1'])
-        x = [xi.relu() for xi in x]
+        x = [xi.gelu() for xi in x]
         x = linear(x, state_dict[f'layer{li}.mlp_fc2'])
         x = [a + b for a, b in zip(x, x_residual)]
 
